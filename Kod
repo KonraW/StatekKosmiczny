@@ -1,0 +1,672 @@
+#include <iostream>
+#include <stdio.h>
+#include <random>
+#include <chrono>
+#include <thread>
+#include <conio.h>
+#include <cstdlib>
+#include <ctime>
+#include "windows.h" 
+#include <time.h>
+#include <stdlib.h>
+#include <iostream>
+
+using namespace std;
+
+
+HANDLE hOut;
+
+//deklarowanie stalych potrzebnych później
+int stop = 0;
+int smierc = 0;
+int wynik = 0;
+int poziom = 1;
+int liczbaBotow = 2;
+int listaBotowX[1024]{};
+int listaBotowY[1024]{};
+
+int random(int mini, int maxi)// stworzenie funkcji do losowania liczb z podanego przedziału
+{
+    if (mini == maxi) {
+        return mini;
+    }
+    if (mini > maxi) {
+        int c = maxi;
+        maxi = mini;
+        mini = c;
+    }
+    int pseudo = rand() % maxi + 1;
+    while (pseudo < mini) {
+        pseudo = rand() % maxi + 1;
+    }
+    return pseudo;
+}
+const int wysokosc = 30;//rozmiary tla
+const int szerokosc = 100;
+char tablica[wysokosc + 1][szerokosc + 1]{};//deklarowanie tla
+int y = random(1, szerokosc);//deklarowanie współrzędne od lewej, samolotu
+int x = 20;//deklarowanie współrzędne od góry, samolotu
+int wylotPociskuY = y;//deklarowanie współrzędne pocisku
+int wylotPociskuX = x;
+void tlo()//tworzenie tla dla gry
+{
+    for (int i = 0; i < wysokosc; i++)
+    {
+        for (int j = 0; j < szerokosc; j++)
+        {
+            if (i == 0 or i == wysokosc - 1)
+            {
+                tablica[i][j] = '-';
+            }
+            if ((j == 0 or j == szerokosc - 1) and i != 0 and i != wysokosc - 1)
+            {
+                tablica[i][j] = '|';
+            }
+            else if (j > 0 and j < szerokosc - 1 and i != 0 and i != wysokosc - 1)
+            {
+                tablica[i][j] = ' ';
+            }
+        }
+    }
+}
+void printujTlo()//wypisanie tła
+{
+    for (int i = 0; i < wysokosc; i++)
+    {
+        for (int j = 0; j < szerokosc; j++) {
+            cout << tablica[i][j];
+        }
+        cout << endl;
+    }
+}
+
+void HideCursor()//funkcja chowająca kursor
+{
+    ::HANDLE hConsoleOut = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    ::CONSOLE_CURSOR_INFO hCCI;
+    ::GetConsoleCursorInfo(hConsoleOut, &hCCI);
+    hCCI.bVisible = FALSE;
+    ::SetConsoleCursorInfo(hConsoleOut, &hCCI);
+}
+
+void setCursor(int x, int y)//ustawianie kursora na danej pozycji i usuwanie samolotu podczas ruchu
+{
+    int z = y;
+    y = x;
+    x = z;
+    COORD c;
+    c.X = x;
+    c.Y = y;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << "   ";
+
+    c.X = x - 1;
+    c.Y = y + 1;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << "    ";
+    HideCursor();
+}
+
+void setCursor2(int x, int y)//ustawianie kursora na danej pozycji i wypisywania samolotu podczas ruchu
+{
+    int z = y;
+    y = x;
+    x = z;
+    COORD c;
+    c.X = x;
+    c.Y = y;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << '/' << '\\';
+
+    c.X = x - 1;
+    c.Y = y + 1;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << '/' << "__" << '\\';
+    HideCursor();
+}
+void pociski(int xx, int yy) {//wypisywanie pocisków samolotu
+
+    if (yy > 0 && yy < wysokosc - 3 && xx>1 && xx < szerokosc - 3) {
+
+        COORD c;
+        c.X = xx;
+        c.Y = yy;
+        SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+        cout << " ";
+
+        if (yy > 1) {
+            c.X = xx;
+            c.Y = yy - 1;
+            SetConsoleTextAttribute(hOut, FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+
+
+            SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+            cout << "|";
+            HideCursor();
+
+            SetConsoleTextAttribute(hOut, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED | FOREGROUND_INTENSITY);
+        }
+    }
+}
+void pociskiBotow(int xx, int yy) {// wypisywanie pocisków botów
+
+    if (yy > 0 && yy < wysokosc - 3 && xx>1 && xx < szerokosc - 3) {
+
+        COORD c;
+        c.X = xx;
+        c.Y = yy;
+        SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+        cout << " ";
+
+        if (yy < wysokosc - 4) {
+            c.X = xx;
+            c.Y = yy + 1;
+            SetConsoleTextAttribute(hOut, FOREGROUND_RED | FOREGROUND_INTENSITY);
+
+
+            SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+            cout << "|";
+            HideCursor();
+
+            SetConsoleTextAttribute(hOut, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED | FOREGROUND_INTENSITY);
+        }
+    }
+}
+
+//deklarowanie potrzebnych później funkcji
+char listaPociskiX[1024]{};
+char listaPociskiY[1024]{};
+int indeksPocisku = *listaPociskiX;
+
+char listaPociskiXBot[1024]{};
+char listaPociskiYBot[1024]{};
+int indeksPociskuBot = *listaPociskiXBot;
+
+clock_t czasBot;
+clock_t czas2Bot;
+clock_t czas;
+clock_t czas2;
+int liczbapop = 0;
+int xx = x;
+int yy = y;
+int noweX = x;
+int noweY = y;
+void ruchBotow();// zadeklarowanie funkcji ruchu botów wcześniej
+
+void kasujTo(int a, int b) {// kasowanie bota po zestrzeleniu przez gracza
+    COORD c;
+    c.X = a;
+    c.Y = b;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << " ";
+    HideCursor();
+
+}
+
+
+
+void printujWynik() {// wypisywanie wyniku, informacji oraz pokazywanie ilości pozostałych botów w postaci "X" (różne kolory)
+    COORD c;
+    c.X = 120;
+    c.Y = 1;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    SetConsoleTextAttribute(hOut, FOREGROUND_RED | FOREGROUND_INTENSITY);
+    cout << "JESLI PRZEGRALES NACISNIJ 'P'  ";
+    c.Y = 5;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    SetConsoleTextAttribute(hOut, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+    cout << "Poziom:  " << poziom;
+    c.Y = 10;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << "Twoj wynik to:  " << wynik;
+
+    c.Y = 15;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << "Pozostala liczba botow: ";
+    c.Y = 17;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+
+    int i = 0;
+    while (listaBotowX[i] != 0) {
+        if (i % 3 == 0 && i != 0) {
+            c.Y++;
+            SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+        }
+        cout << "X";
+        i++;
+
+    }
+    cout << "   ";
+    c.Y++;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << "   ";
+    HideCursor();
+
+    SetConsoleTextAttribute(hOut, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
+}
+
+int wskaznik = 0;
+void strzelanie(int x, int y) {// zarządzanie listą współrzędnych pocisków gracza
+    xx = x;
+    yy = y;
+
+    if (clock() > czas) { //cykliczne czasowo funkcje
+        ruchBotow();//wywoływanie ruchów botów
+
+
+        for (int i = 0; i < 1020; i++) {
+            if (listaPociskiX[i] != 0 && listaPociskiY[i] != 0) {
+                pociski(listaPociskiX[i], --listaPociskiY[i]);// przekazanie wypisania pocisku
+
+                int j = 0;
+                while (listaBotowX[j] != 0) {
+                    if (listaPociskiX[i] == listaBotowX[j] or listaPociskiX[i] == listaBotowX[j] - 1 or listaPociskiX[i] == listaBotowX[j] + 1) {
+                        if (listaPociskiY[i] == listaBotowY[j]) {
+                            int k = j;
+
+                            kasujTo(listaBotowX[k], listaBotowY[k]);// przekazanie wykasowania trafionego bota
+                            while (listaBotowX[k] != 0) {
+                                int pomocX = listaBotowX[k + 1];
+                                int pomocY = listaBotowY[k + 1];
+                                listaBotowX[k] = pomocX;
+                                listaBotowY[k] = pomocY;
+                                k++;
+                            }
+                            int d = 0;
+                            while (d < 1023) {// czyszczenie wszystkich pocisków po zestrzeleniu jakiegoś przez gracza
+                                listaPociskiXBot[d] = NULL;
+                                listaPociskiYBot[d] = NULL;
+                                d++;
+                            }
+                            indeksPociskuBot = *listaPociskiXBot;
+                            wskaznik = 0;
+
+
+                            COORD c;
+                            c.Y = 1;
+                            c.X = 1;
+                            int z = 0;
+                            while (z < wysokosc - 3) {
+                                c.Y++;
+                                SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+
+                                z++;
+                                for (int v = 0; v < szerokosc - 2; v++) {
+                                    cout << " ";
+                                }
+
+                            }//czyszczenie trwa dotąd a potem następuje wypisanie na nowo statku gracza
+                            HideCursor();
+
+                            setCursor2(x, y);
+                            wynik++;
+                            printujWynik();
+                            break;
+                        }
+                    }
+
+                    j++;
+
+                }
+            }
+        }
+        if (indeksPocisku > 1000) {// restarowanie listy pocisków po zapełnieniu do 1000
+            indeksPocisku = 0;
+            for (int i = 0; i < 1020; i++) {
+                listaPociskiX[i] = 0;
+                listaPociskiY[i] = 0;
+            }
+        }
+
+        czas = clock() + 100;
+    }
+    if (clock() > czas2) {// cykliczny wystrzał pocisku(inny od czasu lotu(charakterystyczne przerwy pomiędzy pociskami))
+        listaPociskiX[indeksPocisku] = yy;
+        listaPociskiY[indeksPocisku] = xx;
+        indeksPocisku++;
+
+        czas2 = clock() + 500;
+    }
+}
+
+void strzelanieBot(int x, int y) {// strzelanie botów(analogiczne do strzelania gracza))
+    xx = x;
+    yy = y;
+
+
+    if (clock() > czasBot) {
+
+        for (int i = wskaznik; i < 1020; i++) {
+            if (listaPociskiXBot[i] != 0 && listaPociskiYBot[i] != 0) {
+
+
+                pociskiBotow(listaPociskiXBot[i], ++listaPociskiYBot[i]);
+                wskaznik++;
+
+
+            }
+        }
+        if (indeksPociskuBot > 1000) {
+            indeksPociskuBot = 0;
+            for (int i = 0; i < 1020; i++) {
+                listaPociskiXBot[i] = 0;
+                listaPociskiYBot[i] = 0;
+            }
+        }
+
+    }
+    if (clock() > czas2Bot) {
+        listaPociskiXBot[indeksPociskuBot] = yy;
+        listaPociskiYBot[indeksPociskuBot] = xx;
+        indeksPociskuBot++;
+
+    }
+}
+
+
+int restart = 0;
+
+void sterowanie()// sterowanie za pomocą "a" i "d", wypisywanie nowych pozycji statków
+{
+    if (_kbhit())
+    {
+        switch (_getch())
+        {
+
+        case 'a':
+            if (y <= 2)
+                break;
+            tablica[x][y] = ' ';
+            setCursor(x, y);
+            y--;
+            wylotPociskuY--;
+            tablica[x][y] = 'c';
+            noweX = x;
+            noweY = y;
+            setCursor2(x, y);
+            break;
+        case 'd':
+            if (y >= szerokosc - 4)
+                break;
+            tablica[x][y] = ' ';
+            setCursor(x, y);
+            y++;
+            wylotPociskuY++;
+            tablica[x][y] = 'O';
+            noweX = x;
+            noweY = y;
+            setCursor2(x, y);
+            break;
+
+        }
+    }
+}
+
+
+void sterowanie2()// restart gry pod przyciskiem "P"
+{
+    if (_kbhit())
+    {
+        switch (_getch())
+        {
+        case 'p':
+            
+                smierc = 1;
+                restart = 1;
+            break;
+        }
+    }
+}
+void kasujBota(int a, int b) {// usuwanie ze starych współrzędncyh botów z planszy (zataczając kółko)
+    COORD c;
+    if (b == 4 && a == 1) {
+        b--;
+    }
+    else if (b == 3 && a == szerokosc - 2) {
+        b++;
+    }
+    else if (b == 3) {
+        a++;
+    }
+    else {
+        a--;
+    }
+    c.X = a;
+    c.Y = b;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << " ";
+    HideCursor();
+
+}
+void printujBota(int a, int b) {// wypisywanie bota w odpowiednim miejscu
+    COORD c;
+    c.X = a;
+    c.Y = b;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), c);
+    cout << "+";
+    HideCursor();
+    kasujBota(a, b);
+
+}
+
+
+void stworzBota(int liczba) {// tworzenie botów w losowych miejscach
+    int czy = 1;
+    int i = 0;
+    while (i < liczba) {
+        czy = 1;
+        int a = random(2, szerokosc - 2);
+        int b = random(3, 4);
+        for (int j = 0; j < 1024; j++) {
+
+            if (a == listaBotowX[j]) {
+                czy = 0;
+                break;
+            }
+        }
+        if (czy == 1) {
+            listaBotowX[i] = a;
+            listaBotowY[i] = b;
+            i++;
+
+            printujBota(a, b);
+
+        }
+
+    }
+}
+void ruchBota(int wspX, int wspY, int i) {// poruszanie botów na planszy (zataczają kółko)
+    if (wspY == 3 && wspX == 1) {
+        wspY++;
+    }
+    else if (wspY == 4 && wspX == szerokosc - 2) {
+        wspY--;
+    }
+    else if (wspY == 3) {
+        wspX--;
+    }
+    else {
+        wspX++;
+    }
+    printujBota(wspX, wspY);
+
+
+    listaBotowX[i] = wspX;
+    listaBotowY[i] = wspY;
+}
+void ruchBotow() {// ogólne wywoływanie funkcji ruchu dla pojedyńczych botów
+    int i = 0;
+    while (listaBotowX[i] != 0) {
+        ruchBota(listaBotowX[i], listaBotowY[i], i);
+        i++;
+
+    }
+
+}
+
+int main()
+{
+
+
+    hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+
+
+
+    srand(time(NULL));
+
+    HideCursor();
+
+    HANDLE wHnd = GetStdHandle(STD_OUTPUT_HANDLE); // uchwyt do okna konsoli
+    SMALL_RECT windowSize = { 0, 0, 119, 29 }; // struktura przechowujaca koordynaty lewego gornego rogu i prawego dolnego, konsoli
+    COORD dwSize = { 120, 30 }; // struktura przechowuje wielkosc bufora
+    HWND uchwytKonsoli = GetConsoleWindow(); // zmienna przechowuje uchwyt do okna konsoli
+
+    MoveWindow(uchwytKonsoli, 0, 0, 5000, 5000, TRUE);// powiększanie okna konsoli aby gra ładnie wyglądała
+
+    MoveWindow(uchwytKonsoli, 0, 0, 5000, 5000, TRUE);
+    bool koniec = false;
+    cout << "Ladowanie" << endl;
+    HideCursor();
+    Sleep(3000);// ładowanie gry aby wszystko ładnie wyglądało
+    system("cls");
+    //wypisywanie pierwszego stanu gry
+    tlo();
+
+
+    printujTlo();
+
+
+    setCursor2(x, y);
+    stworzBota(liczbaBotow);
+
+    printujWynik();
+    smierc = 0;
+    while (koniec != true)// nieskończona pętla, dzięki której działa gra
+    {
+
+        sterowanie2();// funkcja dla restartowania za pomocą "P"
+        if (stop != 1) {// sprawdzanie czy gracz nie umarł
+
+            printujWynik();// wypisywanie wyniku
+            strzelanie(wylotPociskuX, wylotPociskuY);//wypisywanie pocisków
+
+            sterowanie();// sterowanie a i d
+
+            int i = 0;
+            wskaznik = 0;
+
+            while (listaBotowX[i] != 0) {
+
+                strzelanieBot(listaBotowY[i], listaBotowX[i]);// strzelanie botów
+                i++;
+
+            }
+            if (i == 0) {// jeśli nie ma żadnego bota to będzie 0 i oznacza następny poziom
+                restart = 1;
+            }
+            if (clock() > czasBot) {// ustawianie czasu pocisków bota
+                czasBot = clock() + 300;
+
+
+            }
+            if (clock() > czas2Bot) {
+
+                czas2Bot = clock() + 900;
+            }
+
+
+
+
+
+            for (int i = 0; i < 1020; i++) {// sprawdzanie czy któryś pocisk bota nie trafił gracza
+                if (listaPociskiXBot[i] != 0 && listaPociskiYBot[i] != 0) {
+
+                    if (listaPociskiXBot[i]  < wylotPociskuY+3 && wylotPociskuY-2 < listaPociskiXBot[i]  && listaPociskiYBot[i] < wylotPociskuX +1 && wylotPociskuX-2 < listaPociskiYBot[i]) {
+                        stop = 1;
+                    }
+
+
+                }
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+        if (restart == 1) {// restartowanie gry albo nowy poziom
+            hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+
+
+
+            srand(time(NULL));
+
+            HideCursor();
+
+            HANDLE wHnd = GetStdHandle(STD_OUTPUT_HANDLE); // uchwyt do okna konsoli
+            SMALL_RECT windowSize = { 0, 0, 119, 29 }; // struktura przechowujaca koordynaty lewego gornego rogu i prawego dolnego, konsoli
+            COORD dwSize = { 120, 30 }; // struktura przechowuje wielkosc bufora
+            HWND uchwytKonsoli = GetConsoleWindow(); // zmienna przechowuje uchwyt do okna konsoli
+
+
+            MoveWindow(uchwytKonsoli, 0, 0, 5000, 5000, TRUE);
+
+
+            MoveWindow(uchwytKonsoli, 0, 0, 5000, 5000, TRUE);
+            bool koniec = false;
+            cout << "Ladowanie" << endl;
+            HideCursor();
+            //Sleep(3000);
+            system("cls");
+            tlo();
+            printujTlo();
+
+            setCursor2(x, y);
+
+            wskaznik = 0;
+            int i = 0;
+            while (i < 1023) {
+
+                listaBotowX[i] = NULL;
+                listaBotowY[i] = NULL;
+                listaPociskiX[i] = NULL;
+                listaPociskiY[i] = NULL;
+                listaPociskiXBot[i] = NULL;
+                listaPociskiYBot[i] = NULL;
+                i++;
+            }
+            indeksPocisku = *listaPociskiX;
+
+
+            indeksPociskuBot = *listaPociskiXBot;
+
+
+            if (smierc == 1) {// jeśli gracz zginął restartowanie gry
+                wynik = 0;
+                stworzBota(2);
+                liczbaBotow = 2;
+                poziom = 0;
+            }
+            else {// jeśli nie to następny poziom
+                if (liczbaBotow < 30) {
+
+                    liczbaBotow *= 2;
+                }
+                stworzBota(liczbaBotow);
+                poziom++;
+
+            }
+
+            restart = 0;
+            smierc = 0;
+            printujWynik();
+            stop = 0;
+        }
+    }
+}
